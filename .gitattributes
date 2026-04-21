@@ -1,0 +1,31 @@
+# Treat columnar / binary data files as binary so git doesn't apply line-ending
+# conversion (especially on Windows with core.autocrlf=true) that corrupts them.
+*.parquet binary
+*.arrow binary
+*.feather binary
+*.orc binary
+*.h5 binary
+*.hdf5 binary
+*.pkl binary
+*.pickle binary
+*.npy binary
+*.npz binary
+*.joblib binary
+*.onnx binary
+*.pt binary
+*.pth binary
+*.safetensors binary
+
+# Images and compiled assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.ico binary
+*.zip binary
+*.gz binary
+
+# Notebook outputs often contain base64-encoded images; keep them treated as
+# text (they are JSON) but don't try to auto-correct line endings.
+*.ipynb text eol=lf

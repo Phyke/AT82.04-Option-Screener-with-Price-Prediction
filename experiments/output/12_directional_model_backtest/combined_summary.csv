@@ -1,0 +1,4 @@
+strategy,n_trades,pct_weeks_traded,fill_rate_pct,mean_pnl_per_trade_pct,total_return,mean_weekly,std_weekly,sharpe,max_dd,n_weeks
+stack_both_baseline,1122,100.0,24.4,-0.042,-0.0198,-0.0005,0.0063,-0.5826,-0.0457,39
+directional_wheel,1122,100.0,25.2,-0.128,-0.0555,-0.0014,0.0086,-1.1927,-0.0814,39
+directional_wheel_quintile,435,38.8,21.1,-0.216,-0.0362,-0.0009,0.0049,-1.3575,-0.0415,39

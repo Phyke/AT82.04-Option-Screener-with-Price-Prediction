@@ -1,0 +1,29 @@
+services:
+  backend:
+    image: phyke/phishing-classifier-backend:latest
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    networks:
+      - internal
+      - global
+
+  frontend:
+    image: phyke/phishing-classifier-frontend:latest
+    environment:
+      - NODE_ENV=production
+      - PORT=5173
+      - VITE_API_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - internal
+      - global
+
+networks:
+  internal:
+    driver: bridge
+  global:
+    external: true

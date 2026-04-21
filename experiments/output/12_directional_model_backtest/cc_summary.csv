@@ -1,0 +1,5 @@
+strategy,n_trades,pct_weeks_traded,fill_rate_pct,mean_pnl_per_trade_pct,total_return,mean_weekly,std_weekly,sharpe,max_dd,n_weeks
+CC_baseline,1222,100.0,21.4,-0.136,-0.0569,-0.0015,0.0144,-0.7325,-0.1417,39
+CC_bottom_half,612,50.1,21.6,-0.154,-0.0339,-0.0009,0.0084,-0.7444,-0.0821,39
+CC_bottom_quintile,228,18.7,16.2,-0.325,-0.0244,-0.0006,0.0041,-1.0877,-0.0387,39
+CC_skip_top_quintile,965,79.0,22.8,-0.118,-0.0424,-0.0011,0.0121,-0.6481,-0.1241,39

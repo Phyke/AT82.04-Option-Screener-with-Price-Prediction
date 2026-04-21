@@ -1,0 +1,15 @@
+{
+    "folders": [
+        {
+            "name": "experiments",
+            "path": "experiments"
+        },
+        {
+            "name": "app",
+            "path": "app"
+        }
+    ],
+    "settings": {
+        "python.terminal.activateEnvironment": true
+    }
+}

@@ -1,0 +1,14 @@
+,0
+best_target,log_forward_ret
+best_model,RF
+"baseline_spearman (pooled, pruned feats)",0.1154
+baseline_r2,0.0079
+baseline_hit_rate,0.5266
+Q5_minus_Q1_mean_return,0.0274
+per_ticker_median_spearman,0.0646
+per_ticker_hit_rate>0_share,0.704
+features_total,37
+features_after_collinearity_prune,28
+n_train,5338
+n_test,1373
+split_date,2025-05-19

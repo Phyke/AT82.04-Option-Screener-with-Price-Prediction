@@ -1,0 +1,5 @@
+strategy,n_trades,pct_weeks_traded,fill_rate_pct,mean_pnl_per_trade_pct,total_return,mean_weekly,std_weekly,sharpe,max_dd,n_weeks
+CSP_baseline,1167,100.0,26.9,0.023,0.0095,0.0002,0.0083,0.2112,-0.0567,39
+CSP_top_half,581,49.8,28.7,-0.012,-0.0024,-0.0001,0.0045,-0.0998,-0.0302,39
+CSP_top_quintile,243,20.8,25.1,0.024,0.0022,0.0001,0.0023,0.178,-0.0149,39
+CSP_skip_bottom_quintile,950,81.4,27.7,0.035,0.0116,0.0003,0.0066,0.3241,-0.0444,39
