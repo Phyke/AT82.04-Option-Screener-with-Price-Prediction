@@ -23,6 +23,8 @@ export type StrategyState = {
 
 export type ExplanationMode = "trader" | "layman";
 
+export type DataSource = "live" | "demo";
+
 export type UniverseResponse = {
   tickers: string[];
   policies: Policy[];

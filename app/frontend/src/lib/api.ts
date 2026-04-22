@@ -1,5 +1,6 @@
 import type {
   ContractRequest,
+  DataSource,
   HistoryResponse,
   PortfolioState,
   PredictResponse,
@@ -10,6 +11,10 @@ import type {
 
 const BASE = (import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 
+function prefix(source: DataSource): string {
+  return source === "demo" ? "/demo" : "";
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
@@ -18,14 +23,14 @@ async function json<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function fetchUniverse(): Promise<UniverseResponse> {
-  return json<UniverseResponse>(await fetch(`${BASE}/universe`));
+export async function fetchUniverse(source: DataSource = "live"): Promise<UniverseResponse> {
+  return json<UniverseResponse>(await fetch(`${BASE}${prefix(source)}/universe`));
 }
 
 export async function fetchScreener(
   portfolio: PortfolioState,
   strategy: StrategyState,
-  { refresh = false }: { refresh?: boolean } = {},
+  { refresh = false, source = "live" as DataSource }: { refresh?: boolean; source?: DataSource } = {},
 ): Promise<ScreenerResponse> {
   const path = refresh ? "/screener/refresh" : "/screener";
   const body = {
@@ -37,7 +42,7 @@ export async function fetchScreener(
     iv_tiers: strategy.iv_tiers,
   };
   return json<ScreenerResponse>(
-    await fetch(`${BASE}${path}`, {
+    await fetch(`${BASE}${prefix(source)}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -45,9 +50,12 @@ export async function fetchScreener(
   );
 }
 
-export async function fetchPrediction(contracts: ContractRequest[]): Promise<PredictResponse> {
+export async function fetchPrediction(
+  contracts: ContractRequest[],
+  source: DataSource = "live",
+): Promise<PredictResponse> {
   return json<PredictResponse>(
-    await fetch(`${BASE}/predict`, {
+    await fetch(`${BASE}${prefix(source)}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ contracts }),
@@ -55,6 +63,6 @@ export async function fetchPrediction(contracts: ContractRequest[]): Promise<Pre
   );
 }
 
-export async function fetchHistory(ticker: string): Promise<HistoryResponse> {
-  return json<HistoryResponse>(await fetch(`${BASE}/history/${ticker}`));
+export async function fetchHistory(ticker: string, source: DataSource = "live"): Promise<HistoryResponse> {
+  return json<HistoryResponse>(await fetch(`${BASE}${prefix(source)}/history/${ticker}`));
 }

@@ -26,6 +26,7 @@ WORKDIR /app
 
 COPY --from=builder /opt/venv /opt/venv
 COPY app ./app
+COPY data ./data
 
 EXPOSE 8000
 

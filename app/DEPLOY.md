@@ -19,12 +19,9 @@ cp .env.example .env
 # edit .env and set PUBLIC_HOST to your VPS IP or hostname
 ```
 
-Copy the trained model to the VPS (not in git):
-
-```bash
-# from your local machine
-scp backend/models/price_model.pkl user@vps:~/options-screener/app/backend/models/
-```
+The trained model (`backend/models/price_model.pkl`) and demo snapshot
+(`backend/data/demo_snapshot.pkl`) are tracked in git, so `git clone`
+brings everything you need.
 
 ## Build and start
 

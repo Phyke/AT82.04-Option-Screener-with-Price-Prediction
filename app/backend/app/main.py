@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import date, datetime
+from typing import Awaitable, Callable
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -33,9 +35,8 @@ POLICIES = ["strict", "safe", "aggressive"]
 async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("starting backend")
-    if settings.DEMO_MODE:
-        demo.load(settings.DEMO_SNAPSHOT_PATH)
     app.state.model = load_model(settings.MODEL_PATH, settings.FEATURE_SCALER_PATH)
+    app.state.demo = demo.load_snapshot(settings.DEMO_SNAPSHOT_PATH)
     await init_cache()
     yield
     await close_cache()
@@ -90,7 +91,14 @@ async def screener_refresh(req: ScreenerRequest) -> ScreenerResponse:
     return await screener(req)
 
 
-async def _predict_per_ticker(tickers: list[str], anchor_date) -> tuple[dict[str, float], dict[str, float], dict[str, str]]:
+DailyProvider = Callable[[str], Awaitable[pd.DataFrame]]
+
+
+async def _predict_per_ticker(
+    tickers: list[str],
+    anchor_date,
+    daily_provider: DailyProvider,
+) -> tuple[dict[str, float], dict[str, float], dict[str, str]]:
     model = app.state.model
     preds: dict[str, float] = {}
     spots: dict[str, float] = {}
@@ -100,7 +108,7 @@ async def _predict_per_ticker(tickers: list[str], anchor_date) -> tuple[dict[str
             errors[t] = "ticker not in model training set"
             continue
         try:
-            hist = await get_daily_history(t)
+            hist = await daily_provider(t)
         except Exception as exc:
             errors[t] = f"daily history fetch failed: {exc}"
             continue
@@ -122,11 +130,16 @@ async def _predict_per_ticker(tickers: list[str], anchor_date) -> tuple[dict[str
     return preds, spots, errors
 
 
-@app.post("/predict", response_model=PredictResponse)
-async def predict(req: PredictRequest) -> PredictResponse:
-    anchor = pd.Timestamp(most_recent_completed_session())
+async def _predict(
+    req: PredictRequest,
+    *,
+    as_of: datetime,
+    anchor_date: date,
+    daily_provider: DailyProvider,
+) -> PredictResponse:
+    anchor = pd.Timestamp(anchor_date)
     tickers = sorted({c.ticker for c in req.contracts})
-    preds, spots, per_ticker_errors = await _predict_per_ticker(tickers, anchor)
+    preds, spots, per_ticker_errors = await _predict_per_ticker(tickers, anchor, daily_provider)
 
     outputs: list[Prediction] = []
     for c in req.contracts:
@@ -143,9 +156,19 @@ async def predict(req: PredictRequest) -> PredictResponse:
         ))
 
     return PredictResponse(
-        as_of=market_now(),
+        as_of=as_of,
         model_input_date=anchor.date(),
         predictions=outputs,
+    )
+
+
+@app.post("/predict", response_model=PredictResponse)
+async def predict(req: PredictRequest) -> PredictResponse:
+    return await _predict(
+        req,
+        as_of=market_now(),
+        anchor_date=most_recent_completed_session(),
+        daily_provider=get_daily_history,
     )
 
 
@@ -158,6 +181,10 @@ async def history(ticker: str) -> dict:
         df = await get_daily_history(ticker)
     except Exception as exc:
         raise HTTPException(status_code=502, detail={"code": "UPSTREAM_ERROR", "message": str(exc)})
+    return _history_to_candles(ticker, df)
+
+
+def _history_to_candles(ticker: str, df: pd.DataFrame) -> dict:
     clean = df.dropna(subset=["open", "high", "low", "adjusted_close"]).tail(252)
     candles = [
         {
@@ -171,3 +198,70 @@ async def history(ticker: str) -> dict:
         for idx, row in clean.iterrows()
     ]
     return {"ticker": ticker, "candles": candles}
+
+
+def _demo() -> demo.DemoSnapshot:
+    return app.state.demo
+
+
+async def _demo_chain_provider(ticker: str, expiry: str):
+    return _demo().get_chain(ticker, expiry)
+
+
+async def _demo_daily_provider(ticker: str) -> pd.DataFrame:
+    return _demo().get_daily(ticker)
+
+
+@app.get("/demo/universe", response_model=UniverseResponse)
+async def demo_universe() -> UniverseResponse:
+    snap = _demo()
+    return UniverseResponse(
+        tickers=snap.tickers(),
+        policies=POLICIES,
+        yield_targets=YIELD_TARGETS,
+        expiry=snap.expiry,
+        as_of=snap.taken_at,
+    )
+
+
+@app.post("/demo/screener", response_model=ScreenerResponse)
+async def demo_screener(req: ScreenerRequest) -> ScreenerResponse:
+    snap = _demo()
+    holdings_list = [TickerState(h.ticker, h.shares, h.avg_cost) for h in req.holdings]
+    return await run_screener(
+        cash=req.cash,
+        holdings_list=holdings_list,
+        policy=req.policy,
+        yield_target=req.yield_target,
+        tolerance_mode=req.tolerance_mode,
+        iv_tiers=req.iv_tiers,
+        universe=snap.tickers(),
+        expiry=snap.expiry,
+        as_of=snap.taken_at,
+        chain_provider=_demo_chain_provider,
+    )
+
+
+@app.post("/demo/screener/refresh", response_model=ScreenerResponse)
+async def demo_screener_refresh(req: ScreenerRequest) -> ScreenerResponse:
+    return await demo_screener(req)
+
+
+@app.post("/demo/predict", response_model=PredictResponse)
+async def demo_predict(req: PredictRequest) -> PredictResponse:
+    snap = _demo()
+    return await _predict(
+        req,
+        as_of=snap.taken_at,
+        anchor_date=most_recent_completed_session(snap.taken_at),
+        daily_provider=_demo_daily_provider,
+    )
+
+
+@app.get("/demo/history/{ticker}")
+async def demo_history(ticker: str) -> dict:
+    ticker = ticker.upper()
+    snap = _demo()
+    if ticker not in snap.daily:
+        raise HTTPException(status_code=404, detail={"code": "TICKER_NOT_IN_DEMO"})
+    return _history_to_candles(ticker, snap.get_daily(ticker))

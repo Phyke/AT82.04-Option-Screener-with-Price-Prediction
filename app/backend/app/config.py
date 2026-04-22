@@ -7,7 +7,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     MODEL_PATH: Path = Path("models/price_model.pkl")
     FEATURE_SCALER_PATH: Path = Path("models/feature_scaler.pkl")
-    DEMO_MODE: bool = False
     DEMO_SNAPSHOT_PATH: Path = Path("data/demo_snapshot.pkl")
     OPTION_CHAIN_TTL_SECONDS: int = 300
     DAILY_HISTORY_TTL_SECONDS: int = 86_400

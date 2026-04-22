@@ -1,10 +1,11 @@
-import type { ExplanationMode, IVTier, PortfolioState, StrategyState } from "./types";
+import type { DataSource, ExplanationMode, IVTier, PortfolioState, StrategyState } from "./types";
 
 const ALL_TIERS: IVTier[] = ["low", "mid", "high"];
 
 const PORTFOLIO_KEY = "options-app/portfolio";
 const STRATEGY_KEY = "options-app/strategy";
 const EXPLANATION_KEY = "options-app/explanation-mode";
+const DATA_SOURCE_KEY = "options-app/data-source";
 
 const DEFAULT_PORTFOLIO: PortfolioState = { cash: 10000, holdings: [] };
 const DEFAULT_STRATEGY: StrategyState = {
@@ -73,4 +74,15 @@ export function loadExplanationMode(): ExplanationMode {
 export function saveExplanationMode(mode: ExplanationMode): void {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(EXPLANATION_KEY, mode);
+}
+
+export function loadDataSource(): DataSource {
+  if (typeof localStorage === "undefined") return "live";
+  const raw = localStorage.getItem(DATA_SOURCE_KEY);
+  return raw === "demo" ? "demo" : "live";
+}
+
+export function saveDataSource(source: DataSource): void {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(DATA_SOURCE_KEY, source);
 }

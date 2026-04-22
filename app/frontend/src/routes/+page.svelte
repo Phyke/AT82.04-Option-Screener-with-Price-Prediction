@@ -3,6 +3,7 @@
   import { fetchPrediction, fetchScreener, fetchUniverse } from "$lib/api";
   import type {
     ContractRequest,
+    DataSource,
     ExplanationMode,
     Pick,
     PortfolioState,
@@ -14,9 +15,11 @@
     UniverseResponse,
   } from "$lib/types";
   import {
+    loadDataSource,
     loadExplanationMode,
     loadPortfolio,
     loadStrategy,
+    saveDataSource,
     saveExplanationMode,
     savePortfolio,
     saveStrategy,
@@ -41,17 +44,35 @@
   let portfolioOpen = $state(false);
   let cspFrac = $state(0.55);
   let explanationMode = $state<ExplanationMode>(loadExplanationMode());
+  let dataSource = $state<DataSource>(loadDataSource());
 
   function setExplanationMode(m: ExplanationMode) {
     explanationMode = m;
     saveExplanationMode(m);
   }
 
+  async function setDataSource(s: DataSource) {
+    if (s === dataSource) return;
+    dataSource = s;
+    saveDataSource(s);
+    screener = null;
+    selections = new Map();
+    predictions = new Map();
+    focused = null;
+    try {
+      universe = await fetchUniverse(dataSource);
+    } catch (e) {
+      screenerError = `Failed to load universe: ${e}`;
+      return;
+    }
+    runScreener();
+  }
+
   let screenerTimer: ReturnType<typeof setTimeout> | null = null;
 
   onMount(async () => {
     try {
-      universe = await fetchUniverse();
+      universe = await fetchUniverse(dataSource);
     } catch (e) {
       screenerError = `Failed to load universe: ${e}`;
       return;
@@ -73,7 +94,7 @@
     screenerLoading = true;
     screenerError = null;
     try {
-      const resp = await fetchScreener(portfolio, strategy, { refresh });
+      const resp = await fetchScreener(portfolio, strategy, { refresh, source: dataSource });
       screener = resp;
       selections = new Map();
       predictions = new Map();
@@ -139,7 +160,7 @@
       type: s.pick.type,
     }));
     try {
-      const resp = await fetchPrediction(contracts);
+      const resp = await fetchPrediction(contracts, dataSource);
       const next = new Map(predictions);
       for (const p of resp.predictions) {
         next.set(`${p.type}:${p.ticker}:${p.strike}`, p);
@@ -253,11 +274,27 @@
       <span>Today: {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span>
       {#if screener}
         <span>Expiry: {screener.expiry}</span>
-        <span>As of: {new Date(screener.as_of).toLocaleTimeString()}</span>
+        <span>As of: {new Date(screener.as_of).toLocaleString()}</span>
         {#if !screener.upstream_healthy}
           <span class="rounded bg-tv-down/20 px-2 py-0.5 text-tv-down">market data unavailable</span>
         {/if}
       {/if}
+      <div class="inline-flex overflow-hidden rounded border border-tv-border">
+        <button
+          type="button"
+          onclick={() => setDataSource("live")}
+          class="px-3 py-1 transition-colors {dataSource === 'live' ? 'bg-tv-accent text-white' : 'bg-tv-card text-tv-text hover:bg-tv-accent/15'}"
+        >
+          Live
+        </button>
+        <button
+          type="button"
+          onclick={() => setDataSource("demo")}
+          class="border-l border-tv-border px-3 py-1 transition-colors {dataSource === 'demo' ? 'bg-tv-accent text-white' : 'bg-tv-card text-tv-text hover:bg-tv-accent/15'}"
+        >
+          Demo
+        </button>
+      </div>
       <button
         type="button"
         onclick={() => runScreener(true)}
@@ -396,6 +433,7 @@
         onRunPrediction={runPrediction}
         mode={explanationMode}
         onModeChange={setExplanationMode}
+        {dataSource}
       />
     </div>
   </div>

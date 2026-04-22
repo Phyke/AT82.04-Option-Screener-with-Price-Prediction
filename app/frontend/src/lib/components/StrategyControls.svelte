@@ -112,27 +112,3 @@
     </div>
   </label>
 </div>
-
-{#if strategy.iv_tiers.length > 0}
-  <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-tv-muted">
-    {#each strategy.iv_tiers as tier (tier)}
-      {@const hint = researchByTier[tier]}
-      {#if hint}
-        <span class="flex items-center gap-1">
-          <span class="font-semibold text-tv-text">{TIER_LABEL[tier]}</span>
-          <span>·</span>
-          {#if hint.policy === "skip"}
-            <span class="text-tv-warn">skip (no edge at {formatPercent(hint.yield_rounded, 0)})</span>
-          {:else}
-            <span class="text-tv-text">{hint.policy}</span>
-            <span class="font-mono">{hint.total_return >= 0 ? "+" : ""}{(hint.total_return * 100).toFixed(0)}%</span>
-            <span class="font-mono">S={hint.sharpe.toFixed(2)}</span>
-          {/if}
-          {#if !hint.stable}
-            <span class="rounded bg-tv-warn/20 px-1 text-tv-warn" title="since_2020 and since_2024 windows disagree">⚠</span>
-          {/if}
-        </span>
-      {/if}
-    {/each}
-  </div>
-{/if}

@@ -12,6 +12,7 @@
     CCPick,
     CSPPick,
     Candle,
+    DataSource,
     ExplanationMode,
     Pick,
     Prediction,
@@ -31,6 +32,7 @@
     onRunPrediction: () => void;
     mode: ExplanationMode;
     onModeChange: (m: ExplanationMode) => void;
+    dataSource: DataSource;
   };
 
   let {
@@ -45,6 +47,7 @@
     onRunPrediction,
     mode,
     onModeChange,
+    dataSource,
   }: Props = $props();
 
   let chartContainer: HTMLDivElement;
@@ -121,7 +124,7 @@
   async function loadHistory(ticker: string) {
     historyLoading = true;
     try {
-      const resp = await fetchHistory(ticker);
+      const resp = await fetchHistory(ticker, dataSource);
       candles = resp.candles;
       if (series) {
         series.setData(
@@ -135,7 +138,6 @@
         );
         chart?.timeScale().fitContent();
       }
-      lastLoadedTicker = ticker;
     } catch (e) {
       console.error("history load failed", e);
     } finally {
@@ -145,9 +147,13 @@
 
   $effect(() => {
     const t = pick?.ticker;
+    const src = dataSource;
     if (!t) return;
-    if (t === untrack(() => lastLoadedTicker)) return;
-    loadHistory(t);
+    const last = untrack(() => lastLoadedTicker);
+    if (last === `${src}:${t}`) return;
+    loadHistory(t).then(() => {
+      lastLoadedTicker = `${src}:${t}`;
+    });
   });
 
   $effect(() => {

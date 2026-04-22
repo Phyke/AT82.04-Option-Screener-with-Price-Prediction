@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from typing import Awaitable, Callable
 
 import pandas as pd
 from loguru import logger
@@ -15,6 +16,8 @@ from app.research import research_for, tier_for
 from app.schemas import CCPick, CSPPick, IVTier, Policy, ResearchHint, ScreenerResponse, SkippedTicker, ToleranceMode
 from app.universe import HIGH_QUALITY_TICKERS
 from app.yf_client import ChainFetch, get_option_chain
+
+ChainProvider = Callable[[str, str], Awaitable[ChainFetch]]
 
 MIN_BID = 0.05
 MIN_OPEN_INTEREST = 10
@@ -177,10 +180,11 @@ async def _screen_one(
     expiry: str,
     dte_days: int,
     sem: asyncio.Semaphore,
+    chain_provider: ChainProvider,
 ) -> tuple[CCPick | None, CSPPick | None, SkippedTicker | None, float | None]:
     async with sem:
         try:
-            chain: ChainFetch = await get_option_chain(ticker, expiry)
+            chain: ChainFetch = await chain_provider(ticker, expiry)
         except Exception as exc:
             logger.warning(f"{ticker}: upstream fetch failed: {exc}")
             return None, None, SkippedTicker(ticker=ticker, reason="upstream fetch failed"), None
@@ -218,21 +222,30 @@ async def run_screener(
     yield_target: float,
     tolerance_mode: ToleranceMode,
     iv_tiers: list[IVTier] | None = None,
+    *,
+    universe: list[str] | None = None,
+    expiry: date | None = None,
+    as_of: datetime | None = None,
+    chain_provider: ChainProvider = get_option_chain,
 ) -> ScreenerResponse:
-    expiry = current_expiry()
+    if expiry is None:
+        expiry = current_expiry()
+    if as_of is None:
+        as_of = market_now()
     expiry_s = expiry.isoformat()
-    dte_days = max(1, (expiry - market_now().date()).days)
+    dte_days = max(1, (expiry - as_of.date()).days)
     holdings = {h.ticker: h for h in holdings_list}
     sem = asyncio.Semaphore(settings.YF_CONCURRENCY)
 
+    base_universe = universe if universe is not None else HIGH_QUALITY_TICKERS
     selected_tiers = set(iv_tiers) if iv_tiers else None
     universe = [
-        t for t in HIGH_QUALITY_TICKERS
+        t for t in base_universe
         if selected_tiers is None or tier_for(t) in selected_tiers
     ]
 
     tasks = [
-        _screen_one(t, holdings, cash, policy, yield_target, tolerance_mode, expiry_s, dte_days, sem)
+        _screen_one(t, holdings, cash, policy, yield_target, tolerance_mode, expiry_s, dte_days, sem, chain_provider)
         for t in universe
     ]
     results = await asyncio.gather(*tasks)
@@ -265,7 +278,7 @@ async def run_screener(
 
     return ScreenerResponse(
         expiry=expiry,
-        as_of=market_now(),
+        as_of=as_of,
         upstream_healthy=upstream_healthy,
         cc_picks=cc_picks,
         csp_picks=csp_picks,

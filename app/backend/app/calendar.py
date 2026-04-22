@@ -1,14 +1,10 @@
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from app import demo
-
 EASTERN = ZoneInfo("America/New_York")
 
 
 def market_now() -> datetime:
-    if demo.is_enabled():
-        return demo.taken_at()
     return datetime.now(tz=EASTERN)
 
 
@@ -18,8 +14,6 @@ def nearest_friday_on_or_after(d: date) -> date:
 
 
 def current_expiry() -> date:
-    if demo.is_enabled():
-        return demo.expiry()
     now = market_now()
     today = now.date()
     friday = nearest_friday_on_or_after(today)
