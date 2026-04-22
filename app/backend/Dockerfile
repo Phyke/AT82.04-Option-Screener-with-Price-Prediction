@@ -1,17 +1,31 @@
-FROM python:3.14-slim
+# syntax=docker/dockerfile:1.7
+FROM python:3.13-slim AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/opt/venv
 
 WORKDIR /app
 
-# RUN apt-get update && apt-get install -y --no-install-recommends build-essential gcc \
-#     && pip install --upgrade pip \
-#     && apt-get purge -y --auto-remove build-essential gcc \
-#     && rm -rf /var/lib/apt/lists/*
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
 
-COPY pyproject.toml /app/pyproject.toml
 
-RUN pip install --no-cache-dir .
+FROM python:3.13-slim AS runtime
 
-COPY . /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /app
+
+COPY --from=builder /opt/venv /opt/venv
+COPY app ./app
 
 EXPOSE 8000
 

@@ -1,0 +1,96 @@
+@import "tailwindcss";
+@source "../src/**/*.{svelte,ts,js,html}";
+
+@theme {
+  --color-tv-bg: #0b0f18;
+  --color-tv-panel: #161a24;
+  --color-tv-card: #262b38;
+  --color-tv-border: #4b5160;
+  --color-tv-text: #eef1f7;
+  --color-tv-muted: #b3b9c5;
+  --color-tv-dim: #6b7280;
+  --color-tv-up: #2dd4bf;
+  --color-tv-up-soft: rgba(45, 212, 191, 0.2);
+  --color-tv-down: #f87171;
+  --color-tv-down-soft: rgba(248, 113, 113, 0.2);
+  --color-tv-accent: #4f8bff;
+  --color-tv-warn: #fbbf24;
+}
+
+html {
+  color-scheme: dark;
+}
+
+html, body {
+  background: var(--color-tv-bg);
+  color: var(--color-tv-text);
+}
+
+/* Force dark dropdown option list across browsers */
+select option {
+  background-color: var(--color-tv-panel);
+  color: var(--color-tv-text);
+}
+
+select option:checked,
+select option:hover {
+  background-color: var(--color-tv-card);
+  color: var(--color-tv-text);
+}
+
+/* TradingView-style scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-tv-border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-tv-border);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-tv-dim);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Hide default number spinners (overlap in narrow inputs). Use keyboard arrows. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Pointer cursor on interactive controls */
+button:not(:disabled),
+select:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled {
+  cursor: not-allowed;
+}

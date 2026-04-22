@@ -1,21 +1,31 @@
-FROM node:24-alpine
+# syntax=docker/dockerfile:1.7
+FROM node:24-slim AS builder
 
 WORKDIR /app
 
-COPY package*.json ./
+ARG VITE_API_URL=http://localhost:8000
+ENV VITE_API_URL=$VITE_API_URL
+ENV NODE_ENV=production
 
+COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
-
-EXPOSE 5173
-
-# Default to production, can be overridden via docker-compose
-ENV NODE_ENV=production
-
-# Build the app - for dev mode, this will be skipped via command override
 RUN npm run build
 
-# For production: run the built app
-# For development: this will be overridden in docker-compose to run dev server
+
+FROM node:24-slim AS runtime
+
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    PORT=3000 \
+    HOST=0.0.0.0
+
+COPY --from=builder /app/build ./build
+COPY --from=builder /app/package.json /app/package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+EXPOSE 3000
+
 CMD ["node", "build"]

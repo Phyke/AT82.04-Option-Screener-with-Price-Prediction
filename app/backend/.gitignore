@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+# runtime data
+models/price_model.pkl
+data/daily_cache/

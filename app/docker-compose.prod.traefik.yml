@@ -1,0 +1,97 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: ${BACKEND_IMAGE:-options-screener-backend:latest}
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      REDIS_URL: redis://redis:6379/0
+      REDIS_PREFIX: ${REDIS_PREFIX:-options-app}
+      MODEL_PATH: /app/models/price_model.pkl
+      CORS_ORIGINS: https://${DOMAIN}
+      CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-}
+      OPTION_CHAIN_TTL_SECONDS: ${OPTION_CHAIN_TTL_SECONDS:-300}
+      DAILY_HISTORY_TTL_SECONDS: ${DAILY_HISTORY_TTL_SECONDS:-86400}
+      YF_CONCURRENCY: ${YF_CONCURRENCY:-8}
+    volumes:
+      - ./backend/models:/app/models:ro
+    depends_on:
+      redis:
+        condition: service_started
+    networks:
+      - internal
+      - proxy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.options-api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.options-api.entrypoints=websecure"
+      - "traefik.http.routers.options-api.tls=true"
+      - "traefik.http.routers.options-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.options-api.middlewares=options-api-stripprefix"
+      - "traefik.http.middlewares.options-api-stripprefix.stripprefix.prefixes=/api"
+      - "traefik.http.services.options-api.loadbalancer.server.port=8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://${DOMAIN}/api
+    image: ${FRONTEND_IMAGE:-options-screener-frontend:latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      - backend
+    networks:
+      - internal
+      - proxy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.options-web.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.options-web.entrypoints=websecure"
+      - "traefik.http.routers.options-web.tls=true"
+      - "traefik.http.routers.options-web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.options-web.loadbalancer.server.port=3000"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+networks:
+  internal:
+    driver: bridge
+  proxy:
+    external: true
+    name: proxy
+
+volumes:
+  redis_data:

@@ -1,14 +1,18 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "Add your description here"
+description = "Option screener + price prediction backend"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
     "fastapi[standard]>=0.123.0",
-    "lightgbm>=4.6.0",
     "loguru>=0.7.3",
     "numpy>=2.0.0",
     "pandas>=2.3.3",
     "yfinance>=0.2.66",
+    "scikit-learn>=1.5.0",
+    "joblib>=1.4.0",
+    "pydantic-settings>=2.6.0",
+    "pyarrow>=17.0.0",
+    "redis>=5.0.0",
 ]
