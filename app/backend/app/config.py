@@ -1,7 +1,8 @@
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -14,7 +15,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_PREFIX: str = "options-app"
-    CORS_ORIGINS: list[str] = []
+    CORS_ORIGINS: Annotated[list[str], NoDecode] = []
     CORS_ORIGIN_REGEX: str = r"^http://(localhost|127\.0\.0\.1)(:\d+)?$"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
