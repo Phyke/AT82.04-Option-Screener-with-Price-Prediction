@@ -13,6 +13,5 @@ wheels
 .git
 .env
 .env.*
-data/daily_cache
 scripts
 *.md

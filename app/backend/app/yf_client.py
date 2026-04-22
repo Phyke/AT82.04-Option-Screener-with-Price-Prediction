@@ -7,6 +7,7 @@ import pandas as pd
 import yfinance as yf
 from loguru import logger
 
+from app import demo
 from app.cache import get_pickle, set_pickle, delete as cache_delete
 from app.config import settings
 
@@ -37,6 +38,11 @@ def _fetch_history_sync(ticker: str) -> pd.DataFrame:
 
 async def get_daily_history(ticker: str) -> pd.DataFrame:
     ticker = ticker.upper()
+    if demo.is_enabled():
+        df = demo.daily(ticker)
+        if df is None or df.empty:
+            raise RuntimeError(f"demo snapshot has no daily history for {ticker}")
+        return df
     key = f"daily:{ticker}"
     cached = await get_pickle(key)
     if isinstance(cached, pd.DataFrame) and not cached.empty:
@@ -66,6 +72,11 @@ def _fetch_chain_sync(ticker: str, expiry: str) -> ChainFetch:
 
 async def get_option_chain(ticker: str, expiry: str, *, bypass_cache: bool = False) -> ChainFetch:
     ticker = ticker.upper()
+    if demo.is_enabled():
+        c = demo.chain(ticker, expiry)
+        if c is None:
+            raise RuntimeError(f"demo snapshot has no chain for {ticker} @ {expiry}")
+        return c
     key = f"chain:{ticker}:{expiry}"
     if not bypass_cache:
         cached = await get_pickle(key)

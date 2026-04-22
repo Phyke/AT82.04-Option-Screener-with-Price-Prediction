@@ -10,6 +10,7 @@ from app.universe import is_universe_ticker
 Policy = Literal["strict", "safe", "aggressive"]
 ToleranceMode = Literal["research", "tight"]
 OptionType = Literal["call", "put"]
+IVTier = Literal["low", "mid", "high"]
 
 
 class Holding(BaseModel):
@@ -40,6 +41,7 @@ class ScreenerRequest(BaseModel):
     policy: Policy
     yield_target: float = Field(gt=0, le=0.1)
     tolerance_mode: ToleranceMode = "research"
+    iv_tiers: list[IVTier] | None = None
 
 
 class CCPick(BaseModel):
@@ -61,6 +63,7 @@ class CCPick(BaseModel):
     max_contracts: int
     cost_basis_gap: float
     below_cost_basis: bool
+    iv_tier: IVTier | None = None
 
 
 class CSPPick(BaseModel):
@@ -81,6 +84,16 @@ class CSPPick(BaseModel):
     collateral_required: float
     max_contracts: int
     fits_cash: bool
+    iv_tier: IVTier | None = None
+
+
+class ResearchHint(BaseModel):
+    policy: Literal["strict", "safe", "aggressive", "skip"]
+    total_return: float
+    sharpe: float
+    stable: bool
+    alt_policy_2020: str | None = None
+    yield_rounded: float
 
 
 class SkippedTicker(BaseModel):
@@ -96,6 +109,7 @@ class ScreenerResponse(BaseModel):
     csp_picks: list[CSPPick]
     skipped: list[SkippedTicker]
     spots: dict[str, float]
+    research_by_tier: dict[str, ResearchHint] = Field(default_factory=dict)
 
 
 class ContractRequest(BaseModel):
@@ -120,10 +134,8 @@ class Prediction(BaseModel):
     ticker: str
     strike: float
     type: OptionType
-    p_assigned: float | None = None
-    otm_pct: float | None = None
+    pred_friday_close: float | None = None
     spot_used: float | None = None
-    ood: bool = False
     error: str | None = None
 
 

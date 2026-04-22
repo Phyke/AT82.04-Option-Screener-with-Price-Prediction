@@ -11,7 +11,8 @@ from loguru import logger
 from app.calendar import current_expiry, market_now
 from app.config import settings
 from app.greeks import bs_delta
-from app.schemas import CCPick, CSPPick, Policy, ScreenerResponse, SkippedTicker, ToleranceMode
+from app.research import research_for, tier_for
+from app.schemas import CCPick, CSPPick, IVTier, Policy, ResearchHint, ScreenerResponse, SkippedTicker, ToleranceMode
 from app.universe import HIGH_QUALITY_TICKERS
 from app.yf_client import ChainFetch, get_option_chain
 
@@ -135,6 +136,7 @@ def _pack_cc(ticker: str, row: dict, spot: float, avg_cost: float, shares: int, 
         max_contracts=shares // 100,
         cost_basis_gap=round(strike - avg_cost, 4),
         below_cost_basis=strike < avg_cost,
+        iv_tier=tier_for(ticker),
     )
 
 
@@ -161,6 +163,7 @@ def _pack_csp(ticker: str, row: dict, spot: float, cash: float, yield_target: fl
         collateral_required=round(collateral, 2),
         max_contracts=math.floor(cash / collateral) if collateral > 0 else 0,
         fits_cash=collateral <= cash,
+        iv_tier=tier_for(ticker),
     )
 
 
@@ -214,6 +217,7 @@ async def run_screener(
     policy: Policy,
     yield_target: float,
     tolerance_mode: ToleranceMode,
+    iv_tiers: list[IVTier] | None = None,
 ) -> ScreenerResponse:
     expiry = current_expiry()
     expiry_s = expiry.isoformat()
@@ -221,9 +225,15 @@ async def run_screener(
     holdings = {h.ticker: h for h in holdings_list}
     sem = asyncio.Semaphore(settings.YF_CONCURRENCY)
 
+    selected_tiers = set(iv_tiers) if iv_tiers else None
+    universe = [
+        t for t in HIGH_QUALITY_TICKERS
+        if selected_tiers is None or tier_for(t) in selected_tiers
+    ]
+
     tasks = [
         _screen_one(t, holdings, cash, policy, yield_target, tolerance_mode, expiry_s, dte_days, sem)
-        for t in HIGH_QUALITY_TICKERS
+        for t in universe
     ]
     results = await asyncio.gather(*tasks)
 
@@ -231,7 +241,7 @@ async def run_screener(
     csp_picks: list[CSPPick] = []
     skipped: list[SkippedTicker] = []
     spots: dict[str, float] = {}
-    for ticker, (cc, csp, sk, spot) in zip(HIGH_QUALITY_TICKERS, results):
+    for ticker, (cc, csp, sk, spot) in zip(universe, results):
         if cc is not None:
             cc_picks.append(cc)
         if csp is not None:
@@ -246,12 +256,20 @@ async def run_screener(
 
     upstream_healthy = any(r[0] is not None or r[1] is not None for r in results)
 
+    tiers_to_hint = selected_tiers if selected_tiers is not None else {"low", "mid", "high"}
+    research_by_tier: dict[str, ResearchHint] = {}
+    for t in tiers_to_hint:
+        hint = research_for(t, yield_target)  # type: ignore[arg-type]
+        if hint is not None:
+            research_by_tier[t] = ResearchHint(**hint)
+
     return ScreenerResponse(
         expiry=expiry,
-        as_of=datetime.now().astimezone(),
+        as_of=market_now(),
         upstream_healthy=upstream_healthy,
         cc_picks=cc_picks,
         csp_picks=csp_picks,
         skipped=skipped,
         spots=spots,
+        research_by_tier=research_by_tier,
     )

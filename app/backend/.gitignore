@@ -11,4 +11,3 @@ wheels/
 
 # runtime data
 models/price_model.pkl
-data/daily_cache/

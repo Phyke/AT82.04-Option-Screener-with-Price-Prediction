@@ -277,6 +277,7 @@
             {strategy}
             policies={universe.policies}
             yieldTargets={universe.yield_targets}
+            researchByTier={screener?.research_by_tier ?? {}}
             onChange={onStrategyChange}
           />
         {/if}
@@ -303,7 +304,6 @@
               picks={cspPicks}
               {focused}
               {selections}
-              {predictions}
               onFocus={focusPick}
               onToggleSelect={toggleSelect}
               onContractsChange={setContracts}
@@ -337,7 +337,6 @@
               picks={ccPicks}
               {focused}
               {selections}
-              {predictions}
               onFocus={focusPick}
               onToggleSelect={toggleSelect}
               onContractsChange={setContracts}

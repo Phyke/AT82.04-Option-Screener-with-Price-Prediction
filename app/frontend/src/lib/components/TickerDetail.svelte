@@ -3,6 +3,7 @@
   import {
     CandlestickSeries,
     createChart,
+    LineStyle,
     type IChartApi,
     type ISeriesApi,
   } from "lightweight-charts";
@@ -149,6 +150,58 @@
     loadHistory(t);
   });
 
+  $effect(() => {
+    if (!pick || !series) return;
+    const p = pick;
+    const line = series.createPriceLine({
+      price: p.strike,
+      color: p.type === "call" ? "#26a69a" : "#ef5350",
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: `Strike $${p.strike.toFixed(2)}`,
+    });
+    return () => {
+      try {
+        series?.removePriceLine(line);
+      } catch {
+        // series or line already gone
+      }
+    };
+  });
+
+  $effect(() => {
+    if (!pick || !series) return;
+    const pred = predictionForPick(pick);
+    if (pred?.pred_friday_close === undefined || pred.pred_friday_close === null) return;
+    const line = series.createPriceLine({
+      price: pred.pred_friday_close,
+      color: "#60a5fa",
+      lineWidth: 2,
+      lineStyle: LineStyle.Dotted,
+      axisLabelVisible: true,
+      title: `Pred Fri $${pred.pred_friday_close.toFixed(2)}`,
+    });
+    return () => {
+      try {
+        series?.removePriceLine(line);
+      } catch {
+        // series or line already gone
+      }
+    };
+  });
+
+  function predictionForPick(p: Pick): Prediction | undefined {
+    const exact = predictions.get(rowKey(p));
+    if (exact) return exact;
+    for (const v of predictions.values()) {
+      if (v.ticker === p.ticker && v.pred_friday_close !== undefined && v.pred_friday_close !== null) {
+        return v;
+      }
+    }
+    return undefined;
+  }
+
   function isCC(p: Pick): p is CCPick {
     return p.type === "call";
   }
@@ -291,14 +344,26 @@
   function predictionLine(p: Pick, pred: Prediction | undefined, m: ExplanationMode): string | null {
     if (!pred) return null;
     if (pred.error) return `Model: ${pred.error}`;
-    if (pred.p_assigned === undefined || pred.p_assigned === null) return null;
-    const ood = pred.ood ? ' <span class="text-tv-warn">(out of model training range)</span>' : "";
+    if (pred.pred_friday_close === undefined || pred.pred_friday_close === null) return null;
+    const predRet = pred.pred_friday_close / p.spot - 1;
+    const dir = predRet >= 0 ? "up" : "down";
+    const vs = isCC(p)
+      ? predRet >= 0 && pred.pred_friday_close >= p.strike
+        ? "above your strike (likely called away)"
+        : "below your strike (likely keep shares)"
+      : predRet < 0 && pred.pred_friday_close <= p.strike
+        ? "below your strike (likely assigned)"
+        : "above your strike (likely keep premium)";
     if (m === "layman") {
-      const outcome = isCC(p) ? "actually end up selling your shares" : "actually end up buying the shares";
-      return `Our prediction model says there's a **${formatPercent(pred.p_assigned, 1)}** chance you'll ${outcome}.${ood}`;
+      return (
+        `Our model predicts **${p.ticker}** closes Friday around ` +
+        `**$${pred.pred_friday_close.toFixed(2)}** (${dir} ${formatPercent(Math.abs(predRet), 2)} from today), ${vs}.`
+      );
     }
-    const label = isCC(p) ? "being called away" : "assignment";
-    return `Model estimates **${formatPercent(pred.p_assigned, 1)}** chance of ${label}.${ood}`;
+    return (
+      `Model Fri close: **$${pred.pred_friday_close.toFixed(2)}** ` +
+      `(${predRet >= 0 ? "+" : ""}${formatPercent(predRet, 2)} vs spot), ${vs}.`
+    );
   }
 
   function renderMd(s: string): string {

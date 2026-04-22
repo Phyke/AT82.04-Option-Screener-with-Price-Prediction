@@ -1,12 +1,11 @@
 <script lang="ts">
-  import type { CCPick, CSPPick, Pick, Prediction, Selection } from "../types";
+  import type { CCPick, Pick, Selection } from "../types";
   import { formatPercent } from "../format";
 
   type Props = {
     picks: Pick[];
     focused: Pick | null;
     selections: Map<string, Selection>;
-    predictions: Map<string, Prediction>;
     onFocus: (p: Pick) => void;
     onToggleSelect: (p: Pick, checked: boolean) => void;
     onContractsChange: (p: Pick, n: number) => void;
@@ -17,7 +16,6 @@
     picks,
     focused,
     selections,
-    predictions,
     onFocus,
     onToggleSelect,
     onContractsChange,
@@ -58,7 +56,6 @@
         <th class="px-1 py-2 text-right">Bid %</th>
         <th class="px-1 py-2 text-right">IV</th>
         <th class="px-1 py-2 text-right">Δ</th>
-        <th class="px-1 py-2 text-right">P(asn)</th>
         <th class="px-1 py-2 text-right">Max</th>
         <th class="px-1 py-2 text-right">#</th>
         <th class="w-8 px-2 py-2 pr-3 text-center"></th>
@@ -68,7 +65,6 @@
       {#each picks as p (rowKey(p))}
         {@const key = rowKey(p)}
         {@const sel = selections.get(key)}
-        {@const pred = predictions.get(key)}
         {@const ss = ssPct(p)}
         {@const below = isCC(p) && (p as CCPick).below_cost_basis}
         <tr
@@ -77,7 +73,21 @@
             : ''}"
           onclick={() => onFocus(p)}
         >
-          <td class="px-3 py-1 font-mono text-base font-semibold text-tv-text">{p.ticker}</td>
+          <td class="px-3 py-1 font-mono text-base font-semibold text-tv-text">
+            {p.ticker}
+            {#if p.iv_tier}
+              <span
+                class="ml-1 align-middle text-[10px] font-bold {p.iv_tier === 'low'
+                  ? 'text-tv-accent'
+                  : p.iv_tier === 'mid'
+                    ? 'text-tv-warn'
+                    : 'text-tv-down'}"
+                title="{p.iv_tier}-IV tier"
+              >
+                {p.iv_tier[0].toUpperCase()}
+              </span>
+            {/if}
+          </td>
           <td class="px-1 py-1">
             <span
               class="inline-block rounded px-1.5 py-0.5 text-[10px] font-bold text-white {isCC(p)
@@ -102,20 +112,6 @@
           </td>
           <td class="px-1 py-1 text-right font-mono text-tv-muted">
             {p.delta >= 0 ? "+" : ""}{p.delta.toFixed(2)}
-          </td>
-          <td class="px-1 py-1 text-right font-mono">
-            {#if pred?.error}
-              <span class="text-[10px] text-tv-down" title={pred.error}>err</span>
-            {:else if pred?.p_assigned !== undefined && pred?.p_assigned !== null}
-              <span
-                class="{pred.ood ? 'text-tv-dim italic' : 'text-tv-warn'}"
-                title={pred.ood ? "Out of training range - extrapolated" : ""}
-              >
-                {formatPercent(pred.p_assigned, 0)}{pred.ood ? "*" : ""}
-              </span>
-            {:else}
-              <span class="text-tv-dim">-</span>
-            {/if}
           </td>
           <td class="px-1 py-1 text-right font-mono text-tv-muted">{p.max_contracts}</td>
           <td class="px-1 py-1 text-right">
@@ -143,7 +139,7 @@
       {/each}
       {#if picks.length === 0}
         <tr>
-          <td colspan="13" class="px-4 py-6 text-center text-sm text-tv-muted">
+          <td colspan="12" class="px-4 py-6 text-center text-sm text-tv-muted">
             {emptyMessage}
           </td>
         </tr>

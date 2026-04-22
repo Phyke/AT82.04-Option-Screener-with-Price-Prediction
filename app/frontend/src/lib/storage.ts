@@ -1,4 +1,6 @@
-import type { ExplanationMode, PortfolioState, StrategyState } from "./types";
+import type { ExplanationMode, IVTier, PortfolioState, StrategyState } from "./types";
+
+const ALL_TIERS: IVTier[] = ["low", "mid", "high"];
 
 const PORTFOLIO_KEY = "options-app/portfolio";
 const STRATEGY_KEY = "options-app/strategy";
@@ -9,6 +11,7 @@ const DEFAULT_STRATEGY: StrategyState = {
   policy: "aggressive",
   yield_target: 0.01,
   tolerance_mode: "research",
+  iv_tiers: [...ALL_TIERS],
 };
 const DEFAULT_EXPLANATION: ExplanationMode = "layman";
 
@@ -41,10 +44,14 @@ export function loadStrategy(): StrategyState {
     if (!parsed.policy || typeof parsed.yield_target !== "number") {
       return DEFAULT_STRATEGY;
     }
+    const tiers = Array.isArray(parsed.iv_tiers) && parsed.iv_tiers.length > 0
+      ? parsed.iv_tiers.filter((t): t is IVTier => t === "low" || t === "mid" || t === "high")
+      : [...ALL_TIERS];
     return {
       policy: parsed.policy,
       yield_target: parsed.yield_target,
       tolerance_mode: parsed.tolerance_mode ?? "research",
+      iv_tiers: tiers.length > 0 ? tiers : [...ALL_TIERS],
     };
   } catch {
     return DEFAULT_STRATEGY;

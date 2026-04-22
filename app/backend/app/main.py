@@ -7,10 +7,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
+from app import demo
 from app.cache import close_cache, init_cache
 from app.calendar import current_expiry, market_now, most_recent_completed_session
 from app.config import settings
-from app.features import STATIC_INPUTS, compute_features
 from app.logging_config import setup_logging
 from app.model import load_model
 from app.schemas import (
@@ -33,7 +33,9 @@ POLICIES = ["strict", "safe", "aggressive"]
 async def lifespan(app: FastAPI):
     setup_logging()
     logger.info("starting backend")
-    app.state.model = load_model(settings.MODEL_PATH)
+    if settings.DEMO_MODE:
+        demo.load(settings.DEMO_SNAPSHOT_PATH)
+    app.state.model = load_model(settings.MODEL_PATH, settings.FEATURE_SCALER_PATH)
     await init_cache()
     yield
     await close_cache()
@@ -78,6 +80,7 @@ async def screener(req: ScreenerRequest) -> ScreenerResponse:
         policy=req.policy,
         yield_target=req.yield_target,
         tolerance_mode=req.tolerance_mode,
+        iv_tiers=req.iv_tiers,
     )
 
 
@@ -87,76 +90,57 @@ async def screener_refresh(req: ScreenerRequest) -> ScreenerResponse:
     return await screener(req)
 
 
-async def _load_features_for(tickers: list[str], anchor_date) -> tuple[dict[str, pd.Series], dict[str, float], dict[str, str]]:
-    spy = await get_daily_history("SPY")
-    rows: dict[str, pd.Series] = {}
+async def _predict_per_ticker(tickers: list[str], anchor_date) -> tuple[dict[str, float], dict[str, float], dict[str, str]]:
+    model = app.state.model
+    preds: dict[str, float] = {}
     spots: dict[str, float] = {}
     errors: dict[str, str] = {}
     for t in tickers:
+        if not model.has_ticker(t):
+            errors[t] = "ticker not in model training set"
+            continue
         try:
             hist = await get_daily_history(t)
         except Exception as exc:
             errors[t] = f"daily history fetch failed: {exc}"
             continue
-        if len(hist) < 252:
-            errors[t] = "insufficient history"
-            continue
         sliced = hist.loc[:anchor_date]
-        if sliced.empty:
-            errors[t] = "no history on or before anchor"
+        if len(sliced) < model.window:
+            errors[t] = "insufficient history"
             continue
         anchor = sliced.index[-1]
         try:
-            feats = compute_features(hist, spy)
-            feat_row = feats.loc[anchor]
+            pred = model.predict_friday_close(t, sliced)
         except Exception as exc:
-            errors[t] = f"feature compute failed: {exc}"
+            errors[t] = f"prediction failed: {exc}"
             continue
-        if feat_row.isna().any():
-            errors[t] = "NaN in features"
+        if pred is None:
+            errors[t] = "prediction unavailable"
             continue
-        rows[t] = feat_row
-        spots[t] = float(hist["adjusted_close"].loc[anchor])
-    return rows, spots, errors
+        preds[t] = pred
+        spots[t] = float(sliced["adjusted_close"].loc[anchor])
+    return preds, spots, errors
 
 
 @app.post("/predict", response_model=PredictResponse)
 async def predict(req: PredictRequest) -> PredictResponse:
-    model = app.state.model
     anchor = pd.Timestamp(most_recent_completed_session())
     tickers = sorted({c.ticker for c in req.contracts})
-    feat_rows, spots, per_ticker_errors = await _load_features_for(tickers, anchor)
+    preds, spots, per_ticker_errors = await _predict_per_ticker(tickers, anchor)
 
-    rows: list[dict] = []
     outputs: list[Prediction] = []
-    row_index_for_pred: list[int] = []
-
-    for i, c in enumerate(req.contracts):
+    for c in req.contracts:
         if c.ticker in per_ticker_errors:
             outputs.append(Prediction(
                 ticker=c.ticker, strike=c.strike, type=c.type,
                 error=per_ticker_errors[c.ticker],
             ))
             continue
-        spot = spots[c.ticker]
-        otm_pct = (c.strike - spot) / spot if c.type == "call" else (spot - c.strike) / spot
-        type_cc = 1 if c.type == "call" else 0
-        row_dict = feat_rows[c.ticker].to_dict()
-        row_dict["otm_pct"] = otm_pct
-        row_dict["type_cc"] = type_cc
-        rows.append({k: row_dict[k] for k in STATIC_INPUTS})
         outputs.append(Prediction(
             ticker=c.ticker, strike=c.strike, type=c.type,
-            otm_pct=round(otm_pct, 6), spot_used=spot,
-            ood=otm_pct > 0.05 or otm_pct < 0.01,
+            pred_friday_close=round(preds[c.ticker], 4),
+            spot_used=spots[c.ticker],
         ))
-        row_index_for_pred.append(i)
-
-    if rows:
-        X = pd.DataFrame(rows, columns=STATIC_INPUTS)
-        probs = model.predict_proba(X)
-        for idx, p in zip(row_index_for_pred, probs):
-            outputs[idx].p_assigned = float(round(p, 4))
 
     return PredictResponse(
         as_of=market_now(),

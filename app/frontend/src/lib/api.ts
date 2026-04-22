@@ -34,6 +34,7 @@ export async function fetchScreener(
     policy: strategy.policy,
     yield_target: strategy.yield_target,
     tolerance_mode: strategy.tolerance_mode,
+    iv_tiers: strategy.iv_tiers,
   };
   return json<ScreenerResponse>(
     await fetch(`${BASE}${path}`, {

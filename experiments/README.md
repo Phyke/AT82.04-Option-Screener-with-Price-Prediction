@@ -14,7 +14,6 @@
 - Although we have some idea about using the option data feature to predict the future price of the underlying stock, we are not sure the correct way to integrate the option data feature into the price prediction model. Therefore, we will put this as a future work.
 
 --- After comparing daily charts from both sources, we found that most of the tickers have consistent data which are already adjusted for splits and dividends. However, 7 tickers were removed from the list because of significant discrepancies > $0.1 at some points in the adjusted close price between Alpha Vantage and yfinance which cannot be explained by the difference in data source or the timing of data fetching. These tickers are: AVGO, BYRN, KULR, NFE, QUBT, SERV, SLI. The remaining 52 tickers have good consistency between the two sources and can be used for our experiments.
-- A
 
 ## Notebook 02: the 59 -> 35 filter funnel
 
@@ -40,42 +39,174 @@ The execution-quality panel shows the spread-vs-price story: the upper half (spr
 
 - Failure modes cluster cleanly: **structural** (no weeklies) -> **liquidity** (thin book) -> **execution** (wide spreads) -> **arithmetic** (penny stock). Each cut ticker fails for a qualitatively different reason.
 - Three filters do all the structural work (weekly, OI, spread). Three are insurance (volume, bid-nonzero, bid-size). One catches a single edge case (price). The insurance filters cost nothing to include and guard against future data drift, but they don't earn their keep on today's universe.
-- The 24 cut tickers become the `LQ` universe in notebook 04, which replays the same weekly CC/CSP workflow on them to sanity-check that these cuts actually improved the strategy rather than just shrinking the universe. Result on that plot: HQ wins decisively on spread (the filter's mechanical claim), but LQ's PnL/Sharpe catches up or overtakes HQ at higher yield targets, suggesting the filter is doing its job on execution cost more than on "picking tickers with fundamentally better CC/CSP edge".
+- The 24 cut tickers are dropped entirely. We don't replay the strategy on them - the filter's role is to shrink the universe to something tradeable, and the downstream notebooks work off the 35 HQ names.
 
-In all four panels below: color encodes tier (HQ = navy/teal filled, LQ = orange/crimson open), marker shape encodes type (CC = circle, CSP = square), and the shaded band visualizes the gap between HQ and LQ of the same type.
+## Notebook 03: weekly strategy labels
 
-![Success rate (% OTM at expiry)](output/04_compare_high_vs_low_quality_ticker/hq_vs_lq_success_rate.png)
+For each (ticker, Monday) in the 35-name HQ universe, scan that Monday's option chain and pick the CC and CSP whose premium-as-percent-of-spot matches each of ten target yields (0.5% to 5% per week, 0.5% increments). Match tolerance is 25% of the target. Each selected contract is priced at Monday close (strike, bid, ask, mark, delta, iv) and labeled with the Friday outcome (`friday_close`, `assigned` flag, `intrinsic_at_expiry`, realized PnL under both bid-fill and mark-fill).
 
-*Success rate (higher is better).* Counter-intuitive at first: LQ CC sits uniformly above HQ CC, and LQ CSP stays above HQ CSP until they cross around 4-4.5% yield. This is mostly a mechanical artifact of LQ's higher IV - for the same target yield the chosen strike lands deeper OTM on LQ than on HQ, raising P(OTM at expiry). The yield-match filter also biases LQ survivors toward the safer strikes (14k+ LQ attempts failed the 25% tolerance check and were skipped). A higher hit rate here does not imply a better strategy; the next three panels show why.
+Output: `strategy_labels.parquet` - 64,339 rows spanning 2020-01-06 → 2026-03-23. One row per (ticker × type × yield × Monday) that found a matching strike; combinations that can't find a match within tolerance are dropped rather than padded. This is the canonical labeled-event table notebook 04 visualizes and notebook 05 consumes for CSP entries. Notebook 05 additionally reads the raw chains under `data/options_alpha/` to pick CC strikes during wheel-mode holding, since those are conditioned on the current assigned strike rather than a fixed yield target.
 
-![Median relative bid-ask spread](output/04_compare_high_vs_low_quality_ticker/hq_vs_lq_spread.png)
+## Notebook 04: options EDA on the HQ universe
 
-*Spread (lower is better).* HQ is roughly 3x tighter than LQ across every yield target. This is the filter's cleanest mechanical claim - dropping the low-liquidity names measurably reduces execution cost without any argument about market direction.
+Two questions against `strategy_labels.parquet` (64,339 rows, 35 HQ tickers, 2020-01-06 → 2026-03-23):
 
-![Mean PnL / capital (bid-fill)](output/04_compare_high_vs_low_quality_ticker/hq_vs_lq_pnl_bid.png)
+1. **What safety margin does each ticker offer at each yield target?** (strike distance from spot, |delta| at entry)
+2. **Has the strategy's performance drifted over time?**
 
-*Mean PnL / capital, bid-fill (higher is better).* Spread cost is already priced in via the bid-fill assumption. HQ CSP is the cleanest series: PnL improves monotonically with yield target and turns positive around 4%. Notable inversion on CC: LQ CC actually beats HQ CC at high yield targets (4.5-5%), driven by the same strike-depth effect from panel 1 and by the fact that far-OTM high-IV calls rarely get exercised.
+**Vocab note before reading.** The chain data has `bid` / `ask` (where you'd actually transact) and `mark` (a vendor-computed fair value, usually close to the mid under normal conditions; diverges from mid when the book is pathological - one-sided, stale, or heavily skewed). Every PnL number has a bid-fill variant (realistic, you sold at bid) and a mark-fill variant (idealized, worked a limit at fair value). The gap between them is the spread tax, persistent at roughly 0.1-0.2% per week.
 
-![Annualized Sharpe (bid-fill PnL)](output/04_compare_high_vs_low_quality_ticker/hq_vs_lq_sharpe_annual.png)
+### Per-ticker yield vs safety frontier
 
-*Annualized Sharpe (higher is better).* Volatility-normalized weekly PnL. HQ CSP climbs smoothly to a meaningfully positive Sharpe (~0.23 at 5% yield). LQ CC jumps positive only at the far right (4.5-5%), but on a thin sample (~400 rows) so the point estimate is noisy. HQ CC and LQ CSP stay in the red across the board. Practical reading: standalone weekly CC on this universe is not an income strategy on its own - it only makes sense as an exit tactic for long positions. Weekly CSP on HQ at high yield targets is the only clean income signal in this grid.
+For every (ticker, type, yield target) triplet, two "safety" measures: median strike distance from spot (% OTM, higher = safer) and median |delta| at entry (lower = safer, less gamma risk). Each ticker traces its own frontier across yield targets. Tickers are color-coded by IV tier (Low/Mid/High terciles of their median IV over the sample).
 
-### Per-ticker detail
+**Tier composition.**
 
-The aggregate panels collapse across tickers; these per-ticker bar charts expose where the aggregate numbers actually come from. Each bar is one ticker's mean weekly P&L / capital (bid-fill) at the given (type, yield) bucket, sorted ascending. Green = HQ, red = LQ. `n=X` is the number of sampled Mondays contributing to that ticker's mean - **anything below roughly `n ≈ 20` is noise**.
+- **Low-IV (13 tickers, median-IV 0.34-0.53)**: MSFT, GOOGL, AAPL, AMZN, META, TSM, QCOM, AVGO, NFLX, AMAT, DELL, LRCX, INTC
+- **Mid-IV (10 tickers, median-IV 0.57-1.06)**: NVDA, AMD, TSLA, PLTR, RBLX, SMCI, COIN, BULL, RKLB, QS
+- **High-IV (12 tickers, median-IV 1.12-1.46)**: GME, IONQ, UUUU, SMR, SOUN, TLRY, RGTI, APLD, QBTS, OKLO, QUBT, BBAI
 
-![Per-ticker mean PnL - CSP at 1% yield](output/04_compare_high_vs_low_quality_ticker/per_ticker_csp_1pct.png)
+![CC - strike distance vs yield](output/04_options_eda/frontier_cc_otm.png)
+![CSP - strike distance vs yield](output/04_options_eda/frontier_csp_otm.png)
+![CC - |delta| at entry vs yield](output/04_options_eda/frontier_cc_delta.png)
+![CSP - |delta| at entry vs yield](output/04_options_eda/frontier_csp_delta.png)
 
-*CSP, 1% yield target.* Almost every HQ ticker sits in a tight band within ±0.5% of zero. The visible extremes are low-sample LQ names (LAC n=2 at -8%, BYRN n=5 at -1.5%) - classic single-outlier bias. At low yield targets the strategy is picking near-ATM strikes on everyone, so week-to-week P&L is dominated by the underlying's move rather than anything structural about the ticker. Nothing to see here yet.
+*How to read.* A line sitting higher on the OTM% chart = safer strike for the same yield. A line sitting lower on the |delta| chart = lower assignment probability and gamma exposure. Cross any vertical line at a given yield target to see the menu of safety margins the options market offers.
 
-![Per-ticker mean PnL - CSP at 5% yield](output/04_compare_high_vs_low_quality_ticker/per_ticker_csp_5pct.png)
+*The structural takeaway.*
 
-*CSP, 5% yield target.* The distribution fans out dramatically. LQ tickers (SLI, DNUT, NFE, UMAC) dominate the deep-negative tail - their volatile underlyings do breach 5% puts regularly, and when they do the loss is large. The HQ mega-caps at the positive extreme (GOOGL, AMZN, MSFT, TSM) are mostly tiny-sample artifacts (n ≤ 7) because those stocks rarely quote a 5%/week put near the target. The meaningful-sample HQ contributors (NVDA n=16, GME n=107, OKLO n=58, TSLA n=32, RBLX n=44, SMR n=58) post small positive bars around +0.3% to +1.5%. The aggregate "HQ CSP wins at high yield" signal is the sum of many small HQ positives plus the absence of LQ-style tail blowups, not a handful of outperformers.
+- **IV alone determines where a ticker sits on these frontiers.** At 1% yield, QUBT (High-IV) sells ~15% OTM calls at |delta| ~0.08; AAPL (Low-IV) sells ~3% OTM calls at |delta| ~0.25. Same yield, very different safety budgets.
+- **Within a tier, tickers cluster tightly.** You can't cherry-pick a "safer AAPL at 1% yield" - IV sets the scale, individual ticker differences are second-order.
+- **At 5% yield all three tiers converge** to ~1-3% OTM / |delta| 0.40-0.50. Running the strategy universe-wide at 5% yield means accepting near-ATM exposure across the board; the IV-tier advantage evaporates.
+- **CC and CSP frontiers look nearly identical in shape** - the options market prices both sides symmetrically on this universe. Skew is small relative to the IV difference between tiers.
 
-![Per-ticker mean PnL - CC at 5% yield](output/04_compare_high_vs_low_quality_ticker/per_ticker_cc_5pct.png)
+*Implication for notebook 05.* The IV-tier segmentation used by the backtest is not a modeling choice; it's a recognition that tier membership determines which yield targets are even feasible. Running 5% yield on Low-IV names forces a strike so far inside the bell curve the strategy is a coinflip. Running 1% yield on High-IV names leaves premium on the table. The frontier plots make the cell structure of the recommended-policy matrix visible before running any backtest.
 
-*CC, 5% yield target.* Inverts the CSP story. The big CC losers are HQ growth names that trended upward over the sample window (PLTR, QUBT, QBTS, RGTI, IONQ, AVGO, DELL) - you sell the 5% call, the stock rips past the strike, you eat the assignment loss. The apparent positive extremes (LAC n=2, GOOGL n=1, MSFT n=1) are tiny-sample noise. The few meaningful positive CC bars (CLOV n=18, UUUU n=29, KULR n=15, QSI n=15, ZETA n=12) are mostly LQ tickers where far-OTM high-IV calls rarely got exercised. Mechanical reading: weekly CC on a growth-tilted universe is systematically short upside vol on names that trend upward, which is why CC Sharpe stays negative across both tiers.
+### Year-over-year trend
 
-![Per-ticker mean PnL - CC at 1% yield](output/04_compare_high_vs_low_quality_ticker/per_ticker_cc_1pct.png)
+![Year-over-year trend](output/04_options_eda/year_trend.png)
 
-*CC, 1% yield target.* Counterpart to CC 5%, and a useful check on the "LQ CC wins at high yields" story. Everyone clusters slightly negative near zero - at 1% yield the call is near-ATM on every ticker, and any 1-2% upward move of the underlying closes it ITM. The deep-negative tail is again growth names that trended upward over the sample (QBTS n=47, IONQ n=116, RGTI n=55, DDD n=96, BE n=101, NFE n=31). The positive tail is mostly sub-`n=5` noise (SLI, RR, LAES, KULR, BYRN, LTBR, QSI, ALKT), with a few meaningful flat-trenders on top (CLOV n=23, DNUT n=11, NVTS n=32, BBAI n=20, BULL n=29). Key contrast with CC 5%: at 1% yield **LQ CC does not beat HQ CC in aggregate** (in fact the opposite, -0.52% vs -0.29%), because the fat LQ bid-ask spread (~25%) eats almost all of a 1% premium. The LQ-CC-wins-at-high-yield signal from the aggregate chart only materializes once the premium is large enough to survive that spread cost - i.e., 4-5% yield. At 1% yield the spread alone is bigger than the prize.
+Three panels: mean PnL (bid), mean PnL (mark), median IV. Lines for CC and CSP across 2020-2026. Answers "has the strategy decayed, improved, or held steady over time?"
+
+*How to read.* Look for monotonic trends (strategy decay/improvement), the gap between bid and mark panels (spread tax), and whether the universe's IV itself is drifting. Always check sample counts - 2026 is only Jan-Mar, ~2,000 rows, so anything dramatic there is small-sample noise.
+
+*Year-by-year summary:*
+
+| Year | Market regime | CSP PnL | CC PnL |
+|---|---|---|---|
+| 2020 | COVID V-rally | **+0.62%** | -0.64% |
+| 2021 | Momentum cooler | -0.08% | -0.23% |
+| 2022 | Bear market (rates) | -0.53% | **+0.10%** |
+| 2023 | AI rally begins | +0.18% | -0.88% |
+| 2024 | AI continues | -0.05% | -0.80% |
+| 2025 | AI + quantum + nuclear rip | -0.04% | -0.76% |
+| 2026 (Q1 only) | Drawdown | -0.51% | **+1.10%** |
+
+The two lines move as near-mirrors because **CC and CSP are directional bets dressed up as income trades**:
+
+- **CSP** = short put = long the underlying in disguise. Rally → CSPs expire OTM → keep premium.
+- **CC** = short call on stock you own = short upside. Rally → stock ripped past strike → you get called away at a loss.
+
+The premium is a thin garnish on top of a giant directional exposure. Year-to-year P&L flips sign with the market's direction, not with "strategy quality." This is also why the frontier plots above matter more than YoY for decision-making: the frontier tells you which setups are structurally available in the market; YoY just tells you last year's direction.
+
+**Universe composition effect (right panel).** Median IV rises from 0.63 in 2020 to 0.95 in 2025, but this isn't the market itself getting more volatile. The HQ list has 35 tickers, but many of them only started trading or getting weeklies partway through the sample: BBAI / APLD / SOUN / RGTI (2022), SMR / OKLO (2023-24), BULL (2025). These are all high-IV speculative names. As they came online they pulled the median up. Mega-caps stayed in the 20-30% IV range the whole time; the newer names run 80-150%.
+
+Row counts back this up: 2020 had ~3,300 rows per type, 2025 had ~8,800. The universe roughly tripled in effective size, and the marginal tickers added are the high-IV ones.
+
+**2026 warning.** The big CC +1.10% / CSP -0.51% spike is ~2,000 rows from three months. Do not read it as "CC finally works" - a plot of just 2020-Q1 would look equally dramatic.
+
+## Notebook 05: policy backtest across 9 strategies x 5 yield targets
+
+Backtests nine post-assignment policies against the 35-ticker HQ universe, 2020-2026. Policies:
+
+1. `liquidate` - sell at next Monday close
+2. `hold_idle_(no_stops|stops)` - wait for breakeven, no CC
+3. `strict_wheel_(no_stops|stops)` - CC only at `strike >= assigned_strike`
+4. `safe_wheel_(no_stops|stops)` - strict first, else furthest-OTM CC
+5. `aggressive_wheel_(no_stops|stops)` - always sell CC at target yield
+
+Each runs at 5 CSP yield targets (1%-5%). `_stops` variants add an 8-week time stop and a 20% drawdown stop. Weekly PnL uses bid-fill (realistic). SPY buy-and-hold is the baseline. Webull Thailand post-promo fee model.
+
+### The median-aggregation gotcha
+
+The original portfolio aggregation took the **median** across 35 tickers per Monday. At 3-5% yield target only 10-24% of tickers have a matching CSP entry on any given Monday (most can't generate that much premium per week), so the median is pinned at zero and the equity curves flatline regardless of what the trading tickers are doing.
+
+Fix: switch to **mean within ticker-IV tiers** (terciles of each ticker's median IV). This exposes the real signal - Mid-IV and High-IV tiers carrying P&L at high yield targets while the Low-IV tier contributes structural zeros.
+
+### Recommended policy per (IV tier, yield target)
+
+![Recommended policy matrix - 2020 start](output/05_options_income_strategies_backtesting/since_2020/recommended_policy_matrix.png)
+
+For each (IV tier, yield target) cell, the policy with the highest total return over the 2020-2026 window. Label shows the winning policy + total return + annualized Sharpe.
+
+- **Best return**: Mid-IV x 2% yield x `aggressive_wheel_no_stops` = **+300% total return, Sharpe 2.91**.
+- **Best Sharpe**: Low-IV x 1% yield x `aggressive_wheel_no_stops` = **+220% return with Sharpe 3.57**. The low-vol universe at low yield produces extremely smooth compounding.
+- **High-IV plays out to the right**: the High-IV row maxes at 5% yield x `strict_wheel_no_stops` = **+236%, Sharpe 1.61**. High-IV names need the fat premium of a 4-5% yield target to survive their own volatility; at 1% yield their strikes aren't far enough OTM to matter.
+- Every winner in the matrix is a **no-stops** variant. Ranking is by total return and stops cap upside to shrink drawdowns. Ranking by Sharpe or Calmar would promote stop variants.
+
+### Seven insights from the grid
+
+1. **Mid-IV is the sweet spot across every policy.** The Mid-IV tier (NVDA / TSM / AVGO / TSLA / AMD / SMCI-class) is at or near the top in every policy x yield combo. Enough IV for fat premium, not so much that the underlying blows through strikes every week.
+
+2. **Low-IV only contributes at 1-2% yield.** Mega-caps (AAPL / MSFT / GOOGL / META / AMAT / LRCX class) deliver structural zeros at 3-5% yield because no strike matches the target. If you run the strategy universe-wide at 5% you're idling ~12 tickers for no reason.
+
+3. **Liquidate is the worst policy, period.** Every tier, every yield. Frequent round-trip fees plus crystallizing assignment losses equals a structurally bad trade after costs. Any wheel variant beats it.
+
+4. **Hold-idle leaves money on the table.** At 3% yield on Mid-IV, `hold_idle_stops` reaches 1.73x while `safe_wheel_stops` reaches 3.22x. The shares you're sitting on should be wheeled, not held idle waiting for breakeven.
+
+5. **Stops almost always hurt on a 6-year window.** Across tier x yield cells, stops_vs_no-stops deltas are mostly negative - aggressive_wheel stops lose 15-80 pp everywhere, strict_wheel stops hurt on 12 of 15 cells. The only cells where stops add meaningful value are Mid-IV 2-3% yield under strict_wheel (+18 to +40 pp), because that cell sees enough isolated single-week drops for the -20% DD stop to fire usefully without crystallizing mean-revertable losses. Elsewhere the stops just cap upside.
+
+6. **Strict wheel wins most High-IV cells; aggressive wheel wins most Mid-IV cells.** High-IV names often V-recover, so refusing to sell a CC below the assigned strike (strict) preserves the recovery upside rather than locking in a discounted exit (aggressive). On Mid-IV the extra CC premium from aggressive selling outweighs the rare recovery miss.
+
+7. **2026-Q1 drawdown shows stops' value.** Every no-stops panel has a visible dip at the right edge; stop variants flatten through it. A concrete example of when the -20% DD stop earned its keep.
+
+### Best combinations
+
+Reading the matrix and insights together:
+
+- **Max return (aggressive)**: Mid-IV + `aggressive_wheel_no_stops` + 2% yield = ~300% over 6 years, Sharpe 2.91.
+- **Max Sharpe (defensive)**: Low-IV + `aggressive_wheel_no_stops` + 1% yield = ~220% with Sharpe 3.57. Smoothest path.
+- **Balanced (real-world tradeable)**: Mid-IV + `strict_wheel_stops` + 2% yield = **+282% return, Sharpe 2.65, max drawdown 16%**. This is the single cell where stops genuinely earn their keep on 2020+ - vs the no-stops version they add +40 pp of return and cut 9 pp of worst-case drawdown, because the -20% DD stop fires cleanly on 2020-Q1 / 2022 / 2026-Q1 single-week drops without crystallizing losses that would have mean-reverted. Every other stops cell trades upside for little or nothing.
+
+**Caveat**: tier-mean curves aggregate across 10-12 tickers. A real book trades one ticker at a time, so per-ticker variance is wider than the tier-mean equity curves suggest. Cross-reference `since_2020/per_ticker_best_vs_bnh.png` for single-ticker realism when sizing positions.
+
+### Late-start windows: 2024, 2025, 2026
+
+The 2020-start matrix flatters BnH because SPY compounded through the historic 2020-2023 rally. The author's actual trading began mid-2024, so the realistic benchmark is what SPY did from there. Re-running the full 9-policy x 5-yield grid with a fresh state machine starting on three later dates:
+
+| Window | SPY BnH | Best Mid-IV 3% | Strategy - SPY |
+|---|---|---|---|
+| 2020+ (~6 yr) | +96% | +252% (aggr-wh) | +156 pp |
+| 2024+ (~27 mo) | +34% | +103% (aggr-wh) | +69 pp |
+| 2025+ (~15 mo) | +7% | +65% (aggr-wh) | +58 pp |
+| 2026 YTD (~12 wk) | **-8%** | **+17% (aggr-wh)** | **+25 pp** |
+
+All four windows above use **Monday-entry to Friday-expiry alignment** on both strategy and BnH sides. Every window effectively ends at Fri Mar 27, 2026 (the last completable Mon-Fri weekly cycle in the data). Tue-Thu of the final incomplete week (Mar 31 to Apr 2 2026) is ignored.
+
+The **2026 row is the most important.** SPY is down 8% in the first 12 weeks of 2026 (Monday-close to Friday-close, aligned with the weekly options cycle), but the Mid-IV 3% cell in the options strategy is *up* 17%. This is precisely the regime premium-selling strategies exist for: market drifts sideways or drops, you still collect premium every week, and the directional exposure cushions rather than crushes you. Breakeven in a down market would have been a win - outperforming by 25 percentage points is the strategy paying its way.
+
+![Recommended policy matrix - 2024 start](output/05_options_income_strategies_backtesting/since_2024/recommended_policy_matrix.png)
+
+**2024+**: every cell positive, aggressive_wheel dominates at low/high yield targets, strict_wheel wins Mid-IV. Sharpes are 1.1-4.7 across the board. Best balanced cell: Mid-IV x 2% x `strict_wheel_stops` at **+120%, Sharpe 3.31** - stops appear as a winner here for the first time, because 2024-2026 included sharper drawdowns (late-2024 crypto correction, Q1-2026 selloff) than the earlier window.
+
+![Recommended policy matrix - 2025 start](output/05_options_income_strategies_backtesting/since_2025/recommended_policy_matrix.png)
+
+**2025+**: small sample (~65 weeks) inflates Sharpe numbers to the 1.3-5.0 range, but every cell is still firmly positive. Aggressive wheel wins almost every cell - short-vol selling pays best when IV is high and the underlying chops rather than trends.
+
+![Recommended policy matrix - 2026 YTD](output/05_options_income_strategies_backtesting/since_2026/recommended_policy_matrix.png)
+
+**2026 YTD** (~12 weeks, Jan to early April): tiny sample, do not trust the Sharpe numbers (Mid-IV 3% shows Sharpe 8.36 but that's pure window-length artifact - 12 observations can't support a real Sharpe estimate). The directional signal is what matters: **every cell is positive while SPY is down 8% over the same window.** The strategy collected premium through the drawdown.
+
+### Cross-window takeaways
+
+1. **As SPY's tailwind fades, the strategy's relative edge grows.** 2020+ gap is 156 pp; 2024+ is 69 pp; 2025+ is 58 pp; 2026 is +25 pp on a -8% SPY. In absolute terms the gap shrinks with shorter windows, but in every window the strategy outpaces BnH.
+
+2. **Stops appear as winners only at 2024+ and later.** The earlier windows included softer corrections; 2024-2026 had sharp single-week drops where the -20% DD stop actually earned its keep. Use stops on Mid-IV in recent-regime trading; skip them if backtesting through calm markets.
+
+3. **Aggressive wheel with no stops is the universal winner at low yield targets** (1-2%) across every window. Mid-IV + 1-2% yield + aggressive wheel is the most robust cell regardless of start date.
+
+4. **Low-IV x 1% is the highest-Sharpe cell in every window.** Sharpe 3.57 → 4.67 → 4.78 → 6.85 from 2020+ to 2026. Mega-caps + low yield + aggressive wheel is the smoothest compounder. Absolute returns are smaller but the path is clean and beats SPY on risk-adjusted basis in every regime.
+
+5. **The 2026 drawdown case is the practical validation.** A short-vol strategy's main promise is decoupling from pure beta. Being up 17% on Mid-IV while SPY is down 8% on the same 12 weeks is exactly that promise delivered. The absolute dollar returns are small since 12 weeks isn't long, but the *direction* is right - which is the only thing that matters when the market turns.
+
+Caveat: 2025+ and 2026 windows have small samples. Don't compare absolute Sharpe numbers across windows - the shorter the window, the noisier the Sharpe. Compare signs, relative ordering of cells, and directional alignment with your intuition about the market regime.
