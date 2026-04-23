@@ -78,40 +78,40 @@ class ResearchCell:
 # "skip" means the research cell winner was hold-idle / liquidate, i.e. don't
 # sell a CC this week; the app surfaces this as a warning rather than a policy.
 RESEARCH_SINCE_2024: dict[tuple[Tier, float], ResearchCell] = {
-    ("low",  0.01): ResearchCell("aggressive", 0.83, 4.48),
-    ("low",  0.02): ResearchCell("strict",     0.37, 1.39),
-    ("low",  0.03): ResearchCell("strict",     0.22, 1.37),
-    ("low",  0.04): ResearchCell("strict",     0.13, 1.32),
-    ("low",  0.05): ResearchCell("strict",     0.09, 1.87),
-    ("mid",  0.01): ResearchCell("aggressive", 1.15, 3.27),
-    ("mid",  0.02): ResearchCell("strict",     1.18, 3.15),
-    ("mid",  0.03): ResearchCell("aggressive", 1.01, 3.90),
-    ("mid",  0.04): ResearchCell("safe",       0.69, 2.53),
-    ("mid",  0.05): ResearchCell("safe",       0.35, 1.85),
-    ("high", 0.01): ResearchCell("strict",     0.48, 0.94),
-    ("high", 0.02): ResearchCell("strict",     0.91, 1.77),
-    ("high", 0.03): ResearchCell("strict",     1.09, 1.75),
-    ("high", 0.04): ResearchCell("strict",     0.99, 1.57),
-    ("high", 0.05): ResearchCell("strict",     0.97, 1.63),
+    ("low",  0.01): ResearchCell("aggressive", 0.835, 4.67),
+    ("low",  0.02): ResearchCell("strict",     0.405, 1.66),
+    ("low",  0.03): ResearchCell("strict",     0.254, 1.84),
+    ("low",  0.04): ResearchCell("strict",     0.145, 1.62),
+    ("low",  0.05): ResearchCell("strict",     0.086, 1.92),
+    ("mid",  0.01): ResearchCell("aggressive", 1.175, 3.46),
+    ("mid",  0.02): ResearchCell("strict",     1.205, 3.31),   # strict_wheel_stops in experiment
+    ("mid",  0.03): ResearchCell("aggressive", 1.030, 4.16),
+    ("mid",  0.04): ResearchCell("safe",       0.712, 2.67),
+    ("mid",  0.05): ResearchCell("safe",       0.370, 1.98),
+    ("high", 0.01): ResearchCell("strict",     0.545, 1.11),
+    ("high", 0.02): ResearchCell("strict",     0.980, 2.00),
+    ("high", 0.03): ResearchCell("strict",     1.163, 1.95),
+    ("high", 0.04): ResearchCell("strict",     1.059, 1.72),
+    ("high", 0.05): ResearchCell("strict",     1.028, 1.77),
 }
 
 # Full history (2020-2026) - used as a second opinion for regime robustness.
 RESEARCH_SINCE_2020: dict[tuple[Tier, float], ResearchCell] = {
-    ("low",  0.01): ResearchCell("aggressive", 2.19, 3.55),
-    ("low",  0.02): ResearchCell("strict",     1.18, 1.66),
-    ("low",  0.03): ResearchCell("strict",     0.79, 1.80),
-    ("low",  0.04): ResearchCell("strict",     0.37, 1.04),
-    ("low",  0.05): ResearchCell("skip",       0.22, 1.04),   # hold-idle winner
-    ("mid",  0.01): ResearchCell("aggressive", 2.90, 3.09),
-    ("mid",  0.02): ResearchCell("aggressive", 2.97, 2.86),
-    ("mid",  0.03): ResearchCell("aggressive", 2.49, 3.07),
-    ("mid",  0.04): ResearchCell("aggressive", 1.53, 2.23),
-    ("mid",  0.05): ResearchCell("safe",       1.15, 2.02),
-    ("high", 0.01): ResearchCell("strict",     0.80, 0.85),
-    ("high", 0.02): ResearchCell("aggressive", 1.68, 1.90),
-    ("high", 0.03): ResearchCell("strict",     1.53, 1.27),
-    ("high", 0.04): ResearchCell("strict",     1.83, 1.33),
-    ("high", 0.05): ResearchCell("strict",     2.25, 1.53),
+    ("low",  0.01): ResearchCell("aggressive", 2.196, 3.57),
+    ("low",  0.02): ResearchCell("strict",     1.217, 1.78),
+    ("low",  0.03): ResearchCell("strict",     0.827, 1.94),
+    ("low",  0.04): ResearchCell("strict",     0.390, 1.09),
+    ("low",  0.05): ResearchCell("skip",       0.225, 1.07),   # hold_idle_no_stops winner
+    ("mid",  0.01): ResearchCell("aggressive", 2.923, 3.18),
+    ("mid",  0.02): ResearchCell("aggressive", 2.997, 2.91),
+    ("mid",  0.03): ResearchCell("aggressive", 2.518, 3.14),
+    ("mid",  0.04): ResearchCell("safe",       1.554, 2.10),
+    ("mid",  0.05): ResearchCell("safe",       1.163, 2.05),
+    ("high", 0.01): ResearchCell("strict",     0.867, 0.96),
+    ("high", 0.02): ResearchCell("aggressive", 1.741, 1.90),
+    ("high", 0.03): ResearchCell("strict",     1.616, 1.39),
+    ("high", 0.04): ResearchCell("strict",     1.926, 1.41),
+    ("high", 0.05): ResearchCell("strict",     2.361, 1.61),
 }
 
 
