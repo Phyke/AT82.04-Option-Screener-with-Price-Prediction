@@ -1,3 +1,10 @@
+> <h1 align="center">‼️ DISCLAIMER ‼️</h1>
+> <h2 align="center" style="color: red;">🚨 NOT FINANCIAL ADVICE 🚨</h2>
+> <p align="center"><span style="color: red; font-size: 1.3em;"><b><u>This is a class project created by a student, not a financial expert.</u></b></span></p>
+> <p align="center"><span style="color: red;"><b>DO NOT expect it to be correct.</b> The strategies, models, and backtest results presented here are for <b>educational purposes only</b> and <b>should not be construed as professional investment advice</b>.</span></p>
+> <p align="center"><i>This message was added after the submission deadline solely as a disclaimer; no further edits have been made, and none ever will be.</i></p>
+> <h1 align="center">🛑 🛑 🛑 🛑 🛑 🛑 🛑 🛑</h1>
+
 # AT82.04 - Option Screener with Price Prediction
 
 A decision-support system for retail investors writing weekly options income trades (Cash-Secured Puts and Covered Calls). Built for AT82.04 Business Intelligence and Analytics at the Asian Institute of Technology.
